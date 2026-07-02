@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum BillStatus {
+  DRAFT
+  FINALIZED
+  VOID
+}
+
+enum ScanStatus {
+  PENDING_REVIEW
+  CONFIRMED
+  REJECTED
+}
+
+model Shop {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  logoUrl   String?  @map("logo_url")
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner    User      @relation("ShopOwner", fields: [ownerId], references: [id])
+  staff    User[]    @relation("ShopStaff")
+  products Product[]
+  bills    Bill[]
+
+  @@map("shops")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  shopId       String?  @map("shop_id")
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(STAFF)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  ownedShops Shop[]  @relation("ShopOwner")
+  shop       Shop?   @relation("ShopStaff", fields: [shopId], references: [id])
+  bills      Bill[]
+
+  @@index([shopId])
+  @@index([email])
+  @@map("users")
+}
+
+model Product {
+  id               String    @id @default(uuid())
+  shopId           String    @map("shop_id")
+  name             String
+  category         String    @default("General")
+  unitPrice        Decimal   @map("unit_price") @db.Decimal(10, 2)
+  quantityInStock  Int       @default(0) @map("quantity_in_stock")
+  reorderThreshold Int       @default(10) @map("reorder_threshold")
+  sku              String?
+  expiryDate       DateTime? @map("expiry_date")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  shop      Shop       @relation(fields: [shopId], references: [id])
+  billItems BillItem[]
+
+  @@index([shopId])
+  @@index([shopId, category])
+  @@index([shopId, name])
+  @@map("products")
+}
+
+model Bill {
+  id            String     @id @default(uuid())
+  shopId         String     @map("shop_id")
+  cashierId      String     @map("cashier_id")
+  customerName   String?    @map("customer_name")
+  customerMobile String?    @map("customer_mobile")
+  totalAmount    Decimal    @default(0) @map("total_amount") @db.Decimal(10, 2)
+  paymentMethod  String     @default("cash") @map("payment_method")
+  status         BillStatus @default(DRAFT)
+  invoiceNumber  String?    @map("invoice_number")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  shop    Shop       @relation(fields: [shopId], references: [id])
+  cashier User       @relation(fields: [cashierId], references: [id])
+  items   BillItem[]
+  scans   Scan[]
+
+  @@index([shopId])
+  @@index([shopId, createdAt])
+  @@index([invoiceNumber])
+  @@map("bills")
+}
+
+model BillItem {
+  id                  String  @id @default(uuid())
+  billId              String  @map("bill_id")
+  productId           String? @map("product_id")
+  productNameSnapshot String  @map("product_name_snapshot")
+  quantity            Int
+  unitPriceSnapshot   Decimal @map("unit_price_snapshot") @db.Decimal(10, 2)
+  lineTotal           Decimal @map("line_total") @db.Decimal(10, 2)
+
+  bill    Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@map("bill_items")
+}
+
+model Scan {
+  id              String     @id @default(uuid())
+  billId          String?    @map("bill_id")
+  originalImageUrl String    @map("original_image_url")
+  rawOcrText      String?    @map("raw_ocr_text") @db.Text
+  parsedJson      Json?      @map("parsed_json")
+  confidenceScore Float?     @map("confidence_score")
+  status          ScanStatus @default(PENDING_REVIEW)
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  bill Bill? @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+  @@map("scans")
+}

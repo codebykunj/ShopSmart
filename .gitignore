@@ -1,0 +1,36 @@
+node_modules/
+dist/
+.env
+*.env.local
+*.env.production
+
+# Build outputs
+client/dist/
+server/dist/
+
+# Prisma
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# Uploads
+server/uploads/*
+!server/uploads/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+test-results/
+playwright-report/

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shopsmart-db
+    environment:
+      POSTGRES_USER: shopsmart
+      POSTGRES_PASSWORD: shopsmart_dev
+      POSTGRES_DB: shopsmart
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopsmart"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: shopsmart-server
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: "postgresql://shopsmart:shopsmart_dev@postgres:5432/shopsmart?schema=public"
+      JWT_ACCESS_SECRET: "shopsmart-access-secret-prod"
+      JWT_REFRESH_SECRET: "shopsmart-refresh-secret-prod"
+      JWT_ACCESS_EXPIRES_IN: "15m"
+      JWT_REFRESH_EXPIRES_IN: "7d"
+      PORT: "3001"
+      NODE_ENV: "production"
+      CORS_ORIGIN: "http://localhost:4173"
+      UPLOAD_DIR: "./uploads"
+      MAX_FILE_SIZE_MB: "10"
+    volumes:
+      - server-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: shopsmart-client
+    ports:
+      - "4173:80"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
+  server-uploads:
