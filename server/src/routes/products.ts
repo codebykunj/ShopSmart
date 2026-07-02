@@ -149,7 +149,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const shopId = req.user!.shopId!;
     const product = await prisma.product.findFirst({
-      where: { id: req.params.id, shopId },
+      where: { id: req.params.id as string, shopId },
     });
 
     if (!product) {
@@ -195,7 +195,7 @@ router.put('/:id', requireRole('OWNER'), async (req: Request, res: Response, nex
 
     // Verify product belongs to shop
     const existing = await prisma.product.findFirst({
-      where: { id: req.params.id, shopId },
+      where: { id: req.params.id as string, shopId },
     });
 
     if (!existing) {
@@ -203,7 +203,7 @@ router.put('/:id', requireRole('OWNER'), async (req: Request, res: Response, nex
     }
 
     const product = await prisma.product.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.category !== undefined && { category: data.category }),
@@ -227,14 +227,14 @@ router.delete('/:id', requireRole('OWNER'), async (req: Request, res: Response, 
     const shopId = req.user!.shopId!;
 
     const existing = await prisma.product.findFirst({
-      where: { id: req.params.id, shopId },
+      where: { id: req.params.id as string, shopId },
     });
 
     if (!existing) {
       throw new AppError(404, 'Product not found');
     }
 
-    await prisma.product.delete({ where: { id: req.params.id } });
+    await prisma.product.delete({ where: { id: req.params.id as string } });
 
     res.json({ message: 'Product deleted' });
   } catch (err) {

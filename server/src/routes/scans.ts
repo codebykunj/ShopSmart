@@ -187,7 +187,7 @@ router.post('/', upload.single('image'), async (req: Request, res: Response, nex
 // PUT /api/scans/:id/confirm
 router.put('/:id/confirm', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const scan = await prisma.scan.findUnique({ where: { id: req.params.id } });
+    const scan = await prisma.scan.findUnique({ where: { id: req.params.id as string } });
 
     if (!scan) {
       throw new AppError(404, 'Scan not found');
@@ -198,7 +198,7 @@ router.put('/:id/confirm', async (req: Request, res: Response, next: NextFunctio
     }
 
     const updated = await prisma.scan.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         status: 'CONFIRMED',
         billId: req.body.billId || null,
@@ -216,7 +216,7 @@ router.put('/:id/confirm', async (req: Request, res: Response, next: NextFunctio
 router.put('/:id/reject', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await prisma.scan.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: { status: 'REJECTED' },
     });
 
