@@ -5,6 +5,14 @@ import { authenticate, requireShopAccess, requireRole } from '../middleware/auth
 const router = Router();
 router.use(authenticate, requireShopAccess);
 
+// Helper to format a Date as YYYY-MM-DD in LOCAL timezone (avoids UTC shift from toISOString)
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // GET /api/analytics/sales?range=day|week|month
 router.get('/sales', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -39,13 +47,13 @@ router.get('/sales', async (req: Request, res: Response, next: NextFunction) => 
       orderBy: { createdAt: 'asc' },
     });
 
-    // Group by date
+    // Group by date using LOCAL timezone keys
     const dailySales: Record<string, { revenue: number; transactions: number; itemsSold: number }> = {};
 
     for (let d = 0; d <= daysBack; d++) {
       const date = new Date(startDate);
       date.setDate(date.getDate() + d);
-      const key = date.toISOString().slice(0, 10);
+      const key = toLocalDateKey(date);
       dailySales[key] = { revenue: 0, transactions: 0, itemsSold: 0 };
     }
 
@@ -54,7 +62,7 @@ router.get('/sales', async (req: Request, res: Response, next: NextFunction) => 
     let totalItemsSold = 0;
 
     for (const bill of bills) {
-      const key = bill.createdAt.toISOString().slice(0, 10);
+      const key = toLocalDateKey(new Date(bill.createdAt));
       const amount = Number(bill.totalAmount);
       const items = bill.items.reduce((sum: number, i: any) => sum + i.quantity, 0);
 

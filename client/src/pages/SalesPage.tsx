@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Area, AreaChart } from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, Cell } from 'recharts';
 import api from '../lib/api';
 import {
-  TrendingUp, IndianRupee, ShoppingBag, Receipt, Calendar,
+  TrendingUp, IndianRupee, ShoppingBag, Receipt, X,
+  CreditCard, Banknote, Smartphone, Clock, ChevronRight, User,
 } from 'lucide-react';
 
 const rangeOptions = [
@@ -13,17 +14,33 @@ const rangeOptions = [
   { value: 'month', label: '30 Days' },
 ];
 
+const paymentIcons: Record<string, any> = {
+  cash: Banknote,
+  card: CreditCard,
+  upi: Smartphone,
+};
+
 export default function SalesPage() {
   const [range, setRange] = useState('week');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['analytics', 'sales', range],
     queryFn: () => api.get('/analytics/sales', { params: { range } }).then(r => r.data),
+    refetchInterval: 30000,
   });
 
   const { data: topProducts, isLoading: topLoading } = useQuery({
     queryKey: ['analytics', 'top-products', range],
     queryFn: () => api.get('/analytics/top-products', { params: { range } }).then(r => r.data),
+    refetchInterval: 30000,
+  });
+
+  // Fetch bills for the selected date
+  const { data: dayBills, isLoading: dayBillsLoading } = useQuery({
+    queryKey: ['bills', 'by-date', selectedDate],
+    queryFn: () => api.get('/bills', { params: { date: selectedDate, limit: 50 } }).then(r => r.data),
+    enabled: !!selectedDate,
   });
 
   const summary = salesData?.summary || { totalRevenue: 0, totalTransactions: 0, totalItemsSold: 0, avgTransaction: 0 };
@@ -32,10 +49,21 @@ export default function SalesPage() {
   // Format date labels
   const formattedChartData = chartData.map((d: any) => ({
     ...d,
-    label: new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+    label: new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
   }));
 
-  const maxRevenue = Math.max(...chartData.map((d: any) => d.revenue), 1);
+  const handleBarClick = (data: any) => {
+    if (data?.activePayload?.[0]?.payload?.date) {
+      const clickedDate = data.activePayload[0].payload.date;
+      setSelectedDate(prev => prev === clickedDate ? null : clickedDate);
+    }
+  };
+
+  const formatSelectedDate = (dateStr: string) => {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+  };
 
   return (
     <div>
@@ -50,7 +78,7 @@ export default function SalesPage() {
           {rangeOptions.map(opt => (
             <button
               key={opt.value}
-              onClick={() => setRange(opt.value)}
+              onClick={() => { setRange(opt.value); setSelectedDate(null); }}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
                 range === opt.value
                   ? 'bg-counter-slate text-white shadow-sm'
@@ -198,14 +226,29 @@ export default function SalesPage() {
         </motion.div>
       </div>
 
-      {/* Transactions per day bar chart */}
+      {/* Daily Transactions — Interactive */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card p-5 mt-6">
-        <h2 className="font-display text-lg text-counter-slate mb-4">Daily Transactions</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-lg text-counter-slate">Daily Transactions</h2>
+            <p className="text-xs text-faded-docket mt-0.5">Click on a bar to view transaction details for that day</p>
+          </div>
+          {selectedDate && (
+            <button
+              onClick={() => setSelectedDate(null)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-counter-slate-50 text-sm text-counter-slate hover:bg-counter-slate-100 transition-colors"
+            >
+              <X size={14} />
+              Clear selection
+            </button>
+          )}
+        </div>
+
         {formattedChartData.length === 0 ? (
           <div className="h-48 flex items-center justify-center text-faded-docket text-sm">No data for this period</div>
         ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={formattedChartData}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={formattedChartData} onClick={handleBarClick} style={{ cursor: 'pointer' }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E8E3DB" />
               <XAxis
                 dataKey="label"
@@ -228,12 +271,170 @@ export default function SalesPage() {
                   fontFamily: 'IBM Plex Mono',
                   color: '#F5F0E8',
                 }}
+                formatter={(value: any, name: string) => {
+                  if (name === 'transactions') return [value, 'Bills'];
+                  if (name === 'itemsSold') return [value, 'Items'];
+                  if (name === 'revenue') return [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue'];
+                  return [value, name];
+                }}
               />
-              <Bar dataKey="transactions" fill="#D44D2D" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="transactions" name="transactions" radius={[4, 4, 0, 0]}>
+                {formattedChartData.map((entry: any, index: number) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.date === selectedDate ? '#1E2A38' : '#D44D2D'}
+                    stroke={entry.date === selectedDate ? '#1E2A38' : 'transparent'}
+                    strokeWidth={entry.date === selectedDate ? 2 : 0}
+                  />
+                ))}
+              </Bar>
+              <Bar dataKey="itemsSold" name="itemsSold" radius={[4, 4, 0, 0]}>
+                {formattedChartData.map((entry: any, index: number) => (
+                  <Cell
+                    key={`cell-items-${index}`}
+                    fill={entry.date === selectedDate ? '#2D8F6F' : '#F5C563'}
+                    opacity={0.7}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
+
+        {/* Day summary cards below the chart */}
+        {!selectedDate && formattedChartData.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 mt-4 pt-4 border-t border-faded-docket/20">
+            {formattedChartData.slice(-7).map((day: any) => (
+              <button
+                key={day.date}
+                onClick={() => setSelectedDate(day.date)}
+                className="text-left p-2.5 rounded-lg border border-faded-docket/20 hover:border-counter-slate/40 hover:shadow-sm transition-all group"
+              >
+                <p className="text-xs text-faded-docket font-mono">{day.label}</p>
+                <p className="font-display text-sm text-counter-slate mt-0.5">₹{day.revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                <p className="text-[10px] text-faded-docket font-mono mt-0.5">{day.transactions} bills</p>
+                <ChevronRight size={12} className="text-faded-docket/40 group-hover:text-counter-slate mt-1 transition-colors" />
+              </button>
+            ))}
+          </div>
+        )}
       </motion.div>
+
+      {/* Transaction Details Panel */}
+      <AnimatePresence>
+        {selectedDate && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: 20, height: 0 }}
+            transition={{ duration: 0.3 }}
+            className="mt-4 overflow-hidden"
+          >
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-display text-lg text-counter-slate">
+                    Transactions on {formatSelectedDate(selectedDate)}
+                  </h3>
+                  <p className="text-xs text-faded-docket mt-0.5">
+                    {dayBills?.pagination?.total || 0} total transaction{(dayBills?.pagination?.total || 0) !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedDate(null)}
+                  className="p-2 hover:bg-counter-slate-50 rounded-lg transition-colors"
+                >
+                  <X size={16} className="text-faded-docket" />
+                </button>
+              </div>
+
+              {dayBillsLoading ? (
+                <div className="flex items-center justify-center py-12 text-faded-docket">
+                  <div className="w-5 h-5 border-2 border-counter-slate border-t-transparent rounded-full animate-spin mr-3" />
+                  Loading transactions…
+                </div>
+              ) : !dayBills?.bills?.length ? (
+                <div className="text-center py-12 text-faded-docket text-sm">
+                  No transactions found for this day.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {dayBills.bills.map((bill: any) => {
+                    const PayIcon = paymentIcons[bill.paymentMethod] || Receipt;
+                    return (
+                      <motion.div
+                        key={bill.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="border border-faded-docket/20 rounded-xl p-4 hover:border-counter-slate/30 hover:shadow-sm transition-all"
+                      >
+                        {/* Bill header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-counter-slate-50 flex items-center justify-center">
+                              <Receipt size={16} className="text-counter-slate" />
+                            </div>
+                            <div>
+                              <p className="font-mono text-sm text-counter-slate font-medium">{bill.invoiceNumber || bill.id.slice(0, 8)}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Clock size={10} className="text-faded-docket" />
+                                <span className="text-xs text-faded-docket font-mono">
+                                  {new Date(bill.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                {bill.customerName && (
+                                  <>
+                                    <span className="text-faded-docket/30">·</span>
+                                    <User size={10} className="text-faded-docket" />
+                                    <span className="text-xs text-faded-docket">{bill.customerName}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-display text-lg text-counter-slate tabular-nums">
+                              ₹{Number(bill.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </p>
+                            <div className="flex items-center gap-1.5 justify-end mt-0.5">
+                              <PayIcon size={10} className="text-faded-docket" />
+                              <span className="text-[10px] text-faded-docket font-mono uppercase">{bill.paymentMethod}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bill items */}
+                        <div className="bg-counter-slate-50/50 rounded-lg p-3">
+                          <div className="flex text-[10px] font-mono text-faded-docket font-semibold uppercase tracking-wider mb-2 px-1">
+                            <span className="flex-1">Item</span>
+                            <span className="w-12 text-right">Qty</span>
+                            <span className="w-16 text-right">Price</span>
+                            <span className="w-20 text-right">Total</span>
+                          </div>
+                          {bill.items.map((item: any, idx: number) => (
+                            <div key={item.id || idx} className="flex items-center text-xs font-mono py-1 px-1 rounded hover:bg-white/60 transition-colors">
+                              <span className="flex-1 text-counter-slate truncate pr-2">{item.productNameSnapshot}</span>
+                              <span className="w-12 text-right text-faded-docket tabular-nums">{item.quantity}</span>
+                              <span className="w-16 text-right text-faded-docket tabular-nums">₹{Number(item.unitPriceSnapshot).toFixed(2)}</span>
+                              <span className="w-20 text-right text-counter-slate tabular-nums font-medium">₹{Number(item.lineTotal).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Cashier */}
+                        {bill.cashier && (
+                          <p className="text-[10px] text-faded-docket font-mono mt-2 px-1">
+                            Cashier: {bill.cashier.name}
+                          </p>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

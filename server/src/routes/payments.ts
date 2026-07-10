@@ -36,6 +36,10 @@ router.post('/create-order', async (req: Request, res: Response, next: NextFunct
   try {
     const { amount } = createOrderSchema.parse(req.body);
 
+    console.log('[Razorpay] Creating order with amount:', amount);
+    console.log('[Razorpay] RAZORPAY_KEY loaded:', process.env.RAZORPAY_KEY ? 'Yes' : 'No');
+    console.log('[Razorpay] RAZORPAY_SECRET loaded:', process.env.RAZORPAY_SECRET ? 'Yes' : 'No');
+
     const options = {
       amount: Math.round(amount * 100), // convert to paise
       currency: 'INR',
@@ -48,8 +52,13 @@ router.post('/create-order', async (req: Request, res: Response, next: NextFunct
       success: true,
       data: order,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    console.error('[Razorpay] Order creation error:', err?.message || err);
+    console.error('[Razorpay] Full error:', JSON.stringify(err, null, 2));
+    res.status(500).json({
+      success: false,
+      message: err?.error?.description || err?.message || 'Could not initiate order',
+    });
   }
 });
 

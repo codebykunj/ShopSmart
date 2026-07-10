@@ -44,10 +44,20 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const page = parseInt(req.query.page as string || '1', 10);
     const limit = parseInt(req.query.limit as string || '20', 10);
     const skip = (page - 1) * limit;
+    const dateFilter = req.query.date as string | undefined; // YYYY-MM-DD
+
+    const where: any = { shopId, status: 'FINALIZED' };
+
+    // Optional: filter by specific date
+    if (dateFilter) {
+      const dayStart = new Date(dateFilter + 'T00:00:00');
+      const dayEnd = new Date(dateFilter + 'T23:59:59.999');
+      where.createdAt = { gte: dayStart, lte: dayEnd };
+    }
 
     const [bills, total] = await Promise.all([
       prisma.bill.findMany({
-        where: { shopId, status: 'FINALIZED' },
+        where,
         include: {
           items: true,
           cashier: { select: { id: true, name: true } },
@@ -56,7 +66,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         skip,
         take: limit,
       }),
-      prisma.bill.count({ where: { shopId, status: 'FINALIZED' } }),
+      prisma.bill.count({ where }),
     ]);
 
     res.json({

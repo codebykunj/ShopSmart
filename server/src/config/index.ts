@@ -1,8 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env from project root
+// Load .env from server root
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Also load .env from project root (for keys like RAZORPAY that may be defined there)
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
