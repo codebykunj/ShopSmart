@@ -14,6 +14,7 @@ import scanRoutes from './routes/scans';
 import analyticsRoutes from './routes/analytics';
 import shopRoutes from './routes/shop';
 import pdfRoutes from './routes/pdf';
+import paymentsRoutes from './routes/payments';
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/bills', pdfRoutes);
 app.use('/api/scans', scanRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 // Health check
 app.get('/api/health', (_req: express.Request, res: express.Response) => {

@@ -9,7 +9,13 @@ import {
   Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone,
   ShoppingCart, Camera, Check, Download, ReceiptText, X,
 } from 'lucide-react';
-import FakePaymentModal from '../components/FakePaymentModal';
+import { loadScript } from '../lib/utils';
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 export default function BillingPage() {
   const { shop } = useAuth();
@@ -24,7 +30,6 @@ export default function BillingPage() {
   const [finalizedBillId, setFinalizedBillId] = useState<string | null>(null);
   const [showStamp, setShowStamp] = useState(false);
   const [showScanUpload, setShowScanUpload] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { data: searchResults } = useQuery({
@@ -91,22 +96,90 @@ export default function BillingPage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.lineTotal, 0);
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     if (cart.length === 0) {
       toast.error('Add at least one item to the bill');
       return;
     }
 
-    if (paymentMethod === 'card' || paymentMethod === 'upi') {
-      setShowPaymentModal(true);
+    if (paymentMethod === 'cash') {
+      executeFinalize();
+    } else {
+      await handleRazorpayCheckout();
+    }
+  };
+
+  const handleRazorpayCheckout = async () => {
+    const res = await loadScript("https://checkout.razorpay.com/v1/checkout.js");
+    if (!res) {
+      toast.error("Razorpay SDK failed to load. Are you online?");
       return;
     }
 
-    executeFinalize();
+    const toastId = toast.loading('Initializing payment...');
+
+    try {
+      const orderData = await api.post('/payments/create-order', { amount: cartTotal });
+      const { id: order_id, currency, amount } = orderData.data.data;
+
+      toast.dismiss(toastId);
+
+      const options = {
+        key: (import.meta as any).env.VITE_RAZORPAY_KEY,
+        amount: amount.toString(),
+        currency: currency,
+        name: shop?.name || "ShopSmart",
+        description: "Billing Transaction",
+        order_id: order_id,
+        handler: async function (response: any) {
+          const verifyToast = toast.loading('Verifying payment...');
+          try {
+            const verifyRes = await api.post('/payments/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              items: cart.map(item => ({
+                productId: item.productId,
+                productName: item.productName,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+              })),
+              paymentMethod,
+              customerName: customerName.trim() || undefined,
+              customerMobile: customerMobile.trim() || undefined,
+            });
+
+            toast.success('Payment successful!', { id: verifyToast });
+            setIsFinalized(true);
+            setFinalizedBillId(verifyRes.data.bill.id);
+            setShowStamp(true);
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['bills'] });
+            queryClient.invalidateQueries({ queryKey: ['analytics'] });
+          } catch (err: any) {
+            toast.error(err.response?.data?.message || 'Payment verification failed', { id: verifyToast });
+          }
+        },
+        prefill: {
+          name: customerName,
+          contact: customerMobile,
+        },
+        theme: {
+          color: "#0f172a", // counter-slate color
+        },
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.on('payment.failed', function (response: any) {
+        toast.error(`Payment failed: ${response.error.description}`);
+      });
+      paymentObject.open();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not initiate payment', { id: toastId });
+    }
   };
 
   const executeFinalize = () => {
-    setShowPaymentModal(false);
     finalizeMutation.mutate({
       items: cart.map(item => ({
         productId: item.productId,
@@ -576,15 +649,6 @@ export default function BillingPage() {
         )}
       </AnimatePresence>
 
-      {/* Fake Payment Modal */}
-      {showPaymentModal && (
-        <FakePaymentModal
-          amount={cartTotal}
-          paymentMethod={paymentMethod as 'card' | 'upi'}
-          onSuccess={executeFinalize}
-          onCancel={() => setShowPaymentModal(false)}
-        />
-      )}
     </div>
   );
 }
