@@ -5,7 +5,7 @@ import api from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   Package, TrendingUp, AlertTriangle, ReceiptText,
-  ArrowRight, Clock, ShoppingBag, IndianRupee,
+  ArrowRight, Clock, ShoppingBag, IndianRupee, Sparkles
 } from 'lucide-react';
 
 const container = {
@@ -19,6 +19,7 @@ const item = {
 
 export default function DashboardPage() {
   const { shop, user } = useAuth();
+  const isOwner = user?.role === 'OWNER';
 
   const { data: products } = useQuery({
     queryKey: ['products'],
@@ -43,6 +44,12 @@ export default function DashboardPage() {
   const { data: recentBills } = useQuery({
     queryKey: ['bills', 'recent'],
     queryFn: () => api.get('/bills?limit=5').then((r) => r.data),
+  });
+
+  const { data: reorderData } = useQuery({
+    queryKey: ['analytics', 'reorder-suggestions'],
+    queryFn: () => api.get('/analytics/reorder-suggestions').then((r) => r.data),
+    enabled: isOwner,
   });
 
   const totalProducts = products?.pagination?.total || 0;
@@ -260,6 +267,68 @@ export default function DashboardPage() {
             </motion.div>
           )}
         </div>
+      )}
+      {/* AI Reorder Suggestions */}
+      {isOwner && reorderData?.suggestions?.length > 0 && (
+        <motion.div variants={item} className="mt-6 card p-5 border-l-4 border-l-blue-500">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} className="text-blue-500" />
+              <h2 className="font-display text-lg text-counter-slate">AI Smart Reorder Suggestions</h2>
+            </div>
+            <span className="badge text-blue-600 bg-blue-50 border border-blue-100">
+              {reorderData.summary.totalSuggestions} items to reorder
+            </span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="text-xs text-faded-docket uppercase border-b border-faded-docket/10">
+                  <th className="pb-2 font-medium">Product</th>
+                  <th className="pb-2 font-medium">Daily Sales</th>
+                  <th className="pb-2 font-medium">Stock Left</th>
+                  <th className="pb-2 font-medium">Suggested Qty</th>
+                  <th className="pb-2 font-medium">Est. Cost</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-faded-docket/10">
+                {reorderData.suggestions.slice(0, 5).map((s: any) => (
+                  <tr key={s.productId}>
+                    <td className="py-2.5">
+                      <p className="font-medium text-counter-slate">{s.name}</p>
+                      <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                        s.urgency === 'critical' ? 'text-stamp-vermillion bg-stamp-vermillion/10' :
+                        s.urgency === 'urgent' ? 'text-amber-alert bg-amber-alert/10' :
+                        'text-blue-500 bg-blue-50'
+                      }`}>
+                        {s.urgency}
+                      </span>
+                    </td>
+                    <td className="py-2.5 font-mono text-counter-slate">{s.dailySalesRate}/day</td>
+                    <td className="py-2.5">
+                      <span className="font-mono text-counter-slate">{s.currentStock}</span>
+                      <span className="text-xs text-faded-docket ml-1">({s.daysOfStockLeft} days)</span>
+                    </td>
+                    <td className="py-2.5">
+                      <span className="font-mono font-medium text-mint-tender bg-mint-tender/10 px-2 py-1 rounded">
+                        +{s.suggestedOrderQty} units
+                      </span>
+                    </td>
+                    <td className="py-2.5 font-mono text-counter-slate tabular-nums">
+                      ₹{s.estimatedCost.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {reorderData.suggestions.length > 5 && (
+            <p className="text-xs text-center text-faded-docket mt-3">
+              + {reorderData.suggestions.length - 5} more suggestions available
+            </p>
+          )}
+        </motion.div>
       )}
     </motion.div>
   );

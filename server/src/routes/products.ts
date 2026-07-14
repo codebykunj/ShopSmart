@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../config/database';
 import { authenticate, requireRole, requireShopAccess } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { logActivity } from '../services/activityService';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ const createProductSchema = z.object({
   name: z.string().min(1, 'Product name is required').max(200),
   category: z.string().default('General'),
   unitPrice: z.number().positive('Price must be positive'),
+  costPrice: z.number().positive().optional().nullable(),
   quantityInStock: z.number().int().min(0, 'Quantity cannot be negative').default(0),
   reorderThreshold: z.number().int().min(0).default(10),
   sku: z.string().optional(),
@@ -162,6 +164,56 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// GET /api/products/profit-stats
+router.get('/profit-stats', requireRole('OWNER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const shopId = req.user!.shopId!;
+
+    const products = await prisma.product.findMany({
+      where: { shopId, costPrice: { not: null } },
+      select: { id: true, name: true, category: true, unitPrice: true, costPrice: true, quantityInStock: true },
+    });
+
+    const margins = products.map((p) => {
+      const sell = Number(p.unitPrice);
+      const cost = Number(p.costPrice);
+      const margin = sell > 0 ? ((sell - cost) / sell) * 100 : 0;
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        sellingPrice: sell,
+        costPrice: cost,
+        profit: sell - cost,
+        marginPercent: Math.round(margin * 10) / 10,
+        stockValue: p.quantityInStock * cost,
+        potentialRevenue: p.quantityInStock * sell,
+      };
+    });
+
+    const totalCostValue = margins.reduce((s, m) => s + m.stockValue, 0);
+    const totalRevenueValue = margins.reduce((s, m) => s + m.potentialRevenue, 0);
+    const avgMargin = margins.length > 0 ? margins.reduce((s, m) => s + m.marginPercent, 0) / margins.length : 0;
+
+    const bestMargin = [...margins].sort((a, b) => b.marginPercent - a.marginPercent).slice(0, 5);
+    const worstMargin = [...margins].sort((a, b) => a.marginPercent - b.marginPercent).slice(0, 5);
+
+    res.json({
+      summary: {
+        productsWithCost: margins.length,
+        totalCostValue: Math.round(totalCostValue),
+        totalRevenueValue: Math.round(totalRevenueValue),
+        totalProfit: Math.round(totalRevenueValue - totalCostValue),
+        avgMarginPercent: Math.round(avgMargin * 10) / 10,
+      },
+      bestMargin,
+      worstMargin,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/products
 router.post('/', requireRole('OWNER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -174,11 +226,21 @@ router.post('/', requireRole('OWNER'), async (req: Request, res: Response, next:
         name: data.name,
         category: data.category,
         unitPrice: data.unitPrice,
+        costPrice: data.costPrice || null,
         quantityInStock: data.quantityInStock,
         reorderThreshold: data.reorderThreshold,
         sku: data.sku || null,
         expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
       },
+    });
+
+    await logActivity({
+      shopId,
+      userId: req.user!.userId,
+      action: 'PRODUCT_CREATED',
+      entityType: 'Product',
+      entityId: product.id,
+      details: { name: data.name, unitPrice: data.unitPrice, costPrice: data.costPrice },
     });
 
     res.status(201).json({ product });
@@ -208,11 +270,21 @@ router.put('/:id', requireRole('OWNER'), async (req: Request, res: Response, nex
         ...(data.name !== undefined && { name: data.name }),
         ...(data.category !== undefined && { category: data.category }),
         ...(data.unitPrice !== undefined && { unitPrice: data.unitPrice }),
+        ...(data.costPrice !== undefined && { costPrice: data.costPrice }),
         ...(data.quantityInStock !== undefined && { quantityInStock: data.quantityInStock }),
         ...(data.reorderThreshold !== undefined && { reorderThreshold: data.reorderThreshold }),
         ...(data.sku !== undefined && { sku: data.sku }),
         ...(data.expiryDate !== undefined && { expiryDate: data.expiryDate ? new Date(data.expiryDate) : null }),
       },
+    });
+
+    await logActivity({
+      shopId,
+      userId: req.user!.userId,
+      action: 'PRODUCT_UPDATED',
+      entityType: 'Product',
+      entityId: product.id,
+      details: data,
     });
 
     res.json({ product });
@@ -235,6 +307,15 @@ router.delete('/:id', requireRole('OWNER'), async (req: Request, res: Response, 
     }
 
     await prisma.product.delete({ where: { id: req.params.id as string } });
+
+    await logActivity({
+      shopId,
+      userId: req.user!.userId,
+      action: 'PRODUCT_DELETED',
+      entityType: 'Product',
+      entityId: req.params.id as string,
+      details: { name: existing.name },
+    });
 
     res.json({ message: 'Product deleted' });
   } catch (err) {

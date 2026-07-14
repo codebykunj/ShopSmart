@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../lib/auth';
+import NotificationBell from './NotificationBell';
 import {
   LayoutDashboard,
   Package,
@@ -13,6 +14,8 @@ import {
   X,
   User,
   Store,
+  Users,
+  Activity,
 } from 'lucide-react';
 
 const navItems = [
@@ -21,12 +24,20 @@ const navItems = [
   { path: '/billing', label: 'Billing', icon: ReceiptText },
   { path: '/bills', label: 'Bills', icon: ScrollText },
   { path: '/sales', label: 'Sales', icon: BarChart3 },
+  { path: '/customers', label: 'Customers', icon: Users },
+];
+
+const ownerOnlyItems = [
+  { path: '/activity', label: 'Activity', icon: Activity },
 ];
 
 export default function TopBar() {
   const { user, shop, logout } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isOwner = user?.role === 'OWNER';
+
+  const allNavItems = isOwner ? [...navItems, ...ownerOnlyItems] : navItems;
 
   return (
     <header className="bg-counter-slate sticky top-0 z-50 shadow-lg">
@@ -47,7 +58,7 @@ export default function TopBar() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
+            {allNavItems.map((item) => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
               return (
@@ -75,7 +86,10 @@ export default function TopBar() {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Notification Bell */}
+            <NotificationBell />
+
             {/* User info — desktop */}
             <div className="hidden md:flex items-center gap-2 text-right">
               <div>
@@ -118,7 +132,7 @@ export default function TopBar() {
             className="md:hidden overflow-hidden border-t border-white/10"
           >
             <div className="px-4 py-3 space-y-1">
-              {navItems.map((item) => {
+              {allNavItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 const Icon = item.icon;
                 return (

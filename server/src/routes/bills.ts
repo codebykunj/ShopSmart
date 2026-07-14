@@ -5,6 +5,7 @@ import { authenticate, requireShopAccess } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import { Decimal } from '@prisma/client/runtime/library';
 import { createBillTransaction } from '../services/billService';
+import { logActivity } from '../services/activityService';
 
 const router = Router();
 router.use(authenticate, requireShopAccess);
@@ -30,6 +31,53 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const shopId = req.user!.shopId!;
     const cashierId = req.user!.userId;
     const bill = await createBillTransaction(shopId, cashierId, data);
+
+    // If customer mobile provided, update customer record (loyalty)
+    if (data.customerMobile && data.customerMobile.length >= 10) {
+      try {
+        const totalAmount = Number(bill.totalAmount);
+        // 1 point per ₹100 spent
+        const pointsEarned = Math.floor(totalAmount / 100);
+
+        await prisma.customer.upsert({
+          where: { shopId_mobile: { shopId, mobile: data.customerMobile } },
+          create: {
+            shopId,
+            name: data.customerName || 'Walk-in Customer',
+            mobile: data.customerMobile,
+            totalSpent: totalAmount,
+            loyaltyPoints: pointsEarned,
+            visitCount: 1,
+            lastVisitAt: new Date(),
+          },
+          update: {
+            totalSpent: { increment: totalAmount },
+            loyaltyPoints: { increment: pointsEarned },
+            visitCount: { increment: 1 },
+            lastVisitAt: new Date(),
+            ...(data.customerName ? { name: data.customerName } : {}),
+          },
+        });
+
+        // Update bill with loyalty info
+        await prisma.bill.update({
+          where: { id: bill.id },
+          data: { loyaltyPointsEarned: pointsEarned },
+        });
+      } catch (err) {
+        console.error('[Loyalty Update Error]', err);
+      }
+    }
+
+    // Log activity
+    await logActivity({
+      shopId,
+      userId: cashierId,
+      action: 'BILL_CREATED',
+      entityType: 'Bill',
+      entityId: bill.id,
+      details: { invoiceNumber: bill.invoiceNumber, totalAmount: Number(bill.totalAmount), items: bill.items.length },
+    });
 
     res.status(201).json({ bill });
   } catch (err) {

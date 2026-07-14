@@ -24,6 +24,30 @@ enum ScanStatus {
   REJECTED
 }
 
+enum NotificationType {
+  LOW_STOCK
+  EXPIRY_WARNING
+  DAILY_SUMMARY
+  DEMAND_SPIKE
+  VOID_BILL
+  STOCK_IMPORTED
+  GENERAL
+}
+
+enum ActivityAction {
+  BILL_CREATED
+  BILL_VOIDED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_DELETED
+  STOCK_IMPORTED
+  CUSTOMER_CREATED
+  CUSTOMER_UPDATED
+  LOGIN
+  LOGOUT
+  SETTINGS_UPDATED
+}
+
 model Shop {
   id        String   @id @default(uuid())
   name      String
@@ -33,10 +57,13 @@ model Shop {
   ownerId   String   @map("owner_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  owner    User      @relation("ShopOwner", fields: [ownerId], references: [id])
-  staff    User[]    @relation("ShopStaff")
-  products Product[]
-  bills    Bill[]
+  owner         User           @relation("ShopOwner", fields: [ownerId], references: [id])
+  staff         User[]         @relation("ShopStaff")
+  products      Product[]
+  bills         Bill[]
+  customers     Customer[]
+  notifications Notification[]
+  activityLogs  ActivityLog[]
 
   @@map("shops")
 }
@@ -50,9 +77,11 @@ model User {
   role         UserRole @default(STAFF)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  ownedShops Shop[]  @relation("ShopOwner")
-  shop       Shop?   @relation("ShopStaff", fields: [shopId], references: [id])
-  bills      Bill[]
+  ownedShops    Shop[]         @relation("ShopOwner")
+  shop          Shop?          @relation("ShopStaff", fields: [shopId], references: [id])
+  bills         Bill[]
+  notifications Notification[]
+  activityLogs  ActivityLog[]
 
   @@index([shopId])
   @@index([email])
@@ -65,6 +94,7 @@ model Product {
   name             String
   category         String    @default("General")
   unitPrice        Decimal   @map("unit_price") @db.Decimal(10, 2)
+  costPrice        Decimal?  @map("cost_price") @db.Decimal(10, 2)
   quantityInStock  Int       @default(0) @map("quantity_in_stock")
   reorderThreshold Int       @default(10) @map("reorder_threshold")
   sku              String?
@@ -81,22 +111,49 @@ model Product {
   @@map("products")
 }
 
+model Customer {
+  id            String   @id @default(uuid())
+  shopId        String   @map("shop_id")
+  name          String
+  mobile        String
+  email         String?
+  totalSpent    Decimal  @default(0) @map("total_spent") @db.Decimal(12, 2)
+  loyaltyPoints Int      @default(0) @map("loyalty_points")
+  visitCount    Int      @default(0) @map("visit_count")
+  lastVisitAt   DateTime? @map("last_visit_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  shop  Shop   @relation(fields: [shopId], references: [id])
+  bills Bill[]
+
+  @@unique([shopId, mobile])
+  @@index([shopId])
+  @@index([shopId, mobile])
+  @@map("customers")
+}
+
 model Bill {
-  id            String     @id @default(uuid())
+  id             String     @id @default(uuid())
   shopId         String     @map("shop_id")
   cashierId      String     @map("cashier_id")
+  customerId     String?    @map("customer_id")
   customerName   String?    @map("customer_name")
   customerMobile String?    @map("customer_mobile")
   totalAmount    Decimal    @default(0) @map("total_amount") @db.Decimal(10, 2)
   paymentMethod  String     @default("cash") @map("payment_method")
   status         BillStatus @default(DRAFT)
   invoiceNumber  String?    @map("invoice_number")
+  loyaltyPointsEarned Int   @default(0) @map("loyalty_points_earned")
+  loyaltyPointsRedeemed Int @default(0) @map("loyalty_points_redeemed")
+  discountAmount Decimal    @default(0) @map("discount_amount") @db.Decimal(10, 2)
   createdAt      DateTime   @default(now()) @map("created_at")
 
-  shop    Shop       @relation(fields: [shopId], references: [id])
-  cashier User       @relation(fields: [cashierId], references: [id])
-  items   BillItem[]
-  scans   Scan[]
+  shop     Shop       @relation(fields: [shopId], references: [id])
+  cashier  User       @relation(fields: [cashierId], references: [id])
+  customer Customer?  @relation(fields: [customerId], references: [id])
+  items    BillItem[]
+  scans    Scan[]
 
   @@index([shopId])
   @@index([shopId, createdAt])
@@ -121,17 +178,56 @@ model BillItem {
 }
 
 model Scan {
-  id              String     @id @default(uuid())
-  billId          String?    @map("bill_id")
-  originalImageUrl String    @map("original_image_url")
-  rawOcrText      String?    @map("raw_ocr_text") @db.Text
-  parsedJson      Json?      @map("parsed_json")
-  confidenceScore Float?     @map("confidence_score")
-  status          ScanStatus @default(PENDING_REVIEW)
-  createdAt       DateTime   @default(now()) @map("created_at")
+  id               String     @id @default(uuid())
+  billId           String?    @map("bill_id")
+  originalImageUrl String     @map("original_image_url")
+  rawOcrText       String?    @map("raw_ocr_text") @db.Text
+  parsedJson       Json?      @map("parsed_json")
+  confidenceScore  Float?     @map("confidence_score")
+  status           ScanStatus @default(PENDING_REVIEW)
+  createdAt        DateTime   @default(now()) @map("created_at")
 
   bill Bill? @relation(fields: [billId], references: [id])
 
   @@index([billId])
   @@map("scans")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  shopId    String           @map("shop_id")
+  userId    String?          @map("user_id")
+  type      NotificationType @default(GENERAL)
+  title     String
+  message   String
+  isRead    Boolean          @default(false) @map("is_read")
+  data      Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  shop Shop  @relation(fields: [shopId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([shopId])
+  @@index([shopId, isRead])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id         String         @id @default(uuid())
+  shopId     String         @map("shop_id")
+  userId     String         @map("user_id")
+  action     ActivityAction
+  entityType String?        @map("entity_type")
+  entityId   String?        @map("entity_id")
+  details    Json?
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  shop Shop @relation(fields: [shopId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([shopId])
+  @@index([shopId, createdAt])
+  @@index([userId])
+  @@map("activity_logs")
 }

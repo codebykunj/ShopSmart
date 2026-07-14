@@ -4,8 +4,11 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../config/database';
 import { config } from '../config';
-import { authenticate, requireShopAccess } from '../middleware/auth';
+import { authenticate, requireShopAccess, requireRole } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import { parseSupplierBill, bulkImportProducts } from '../services/productScanService';
+import { logActivity } from '../services/activityService';
+import { createNotification } from '../services/notificationService';
 
 const router = Router();
 router.use(authenticate, requireShopAccess);
@@ -221,6 +224,127 @@ router.put('/:id/reject', async (req: Request, res: Response, next: NextFunction
     });
 
     res.json({ scan: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/scans/inventory — upload and process a supplier bill for stock import
+router.post('/inventory', requireRole('OWNER'), upload.single('image'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) {
+      throw new AppError(400, 'No image file uploaded');
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+
+    // Create scan record
+    const scan = await prisma.scan.create({
+      data: {
+        originalImageUrl: imageUrl,
+        status: 'PENDING_REVIEW',
+      },
+    });
+
+    let rawText = '';
+    let parsed: any = { supplierInfo: {}, items: [], overallConfidence: 0 };
+
+    try {
+      const Tesseract = require('tesseract.js');
+      const imagePath = path.resolve(config.upload.dir, req.file.filename);
+
+      // Pre-process with sharp
+      const sharp = require('sharp');
+      const processedPath = imagePath.replace(/(\. \w+)$/, '-processed$1');
+
+      await sharp(imagePath)
+        .greyscale()
+        .normalize()
+        .sharpen()
+        .toFile(processedPath);
+
+      const { data } = await Tesseract.recognize(processedPath, 'eng', {
+        logger: () => {},
+      });
+
+      rawText = data.text;
+      parsed = parseSupplierBill(rawText);
+
+      await prisma.scan.update({
+        where: { id: scan.id },
+        data: {
+          rawOcrText: rawText,
+          parsedJson: parsed as any,
+          confidenceScore: parsed.overallConfidence,
+        },
+      });
+    } catch (ocrErr) {
+      console.error('[OCR Error - Inventory]', ocrErr);
+      await prisma.scan.update({
+        where: { id: scan.id },
+        data: {
+          rawOcrText: 'OCR processing failed — please enter products manually',
+          confidenceScore: 0,
+        },
+      });
+    }
+
+    res.status(201).json({
+      scan: {
+        id: scan.id,
+        originalImageUrl: imageUrl,
+        rawOcrText: rawText,
+        parsed,
+        status: 'PENDING_REVIEW',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/scans/inventory/:id/import — bulk import reviewed products
+router.post('/inventory/:id/import', requireRole('OWNER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const shopId = req.user!.shopId!;
+    const scanId = req.params.id as string;
+
+    const scan = await prisma.scan.findUnique({ where: { id: scanId } });
+    if (!scan) throw new AppError(404, 'Scan not found');
+
+    const items = req.body.items;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new AppError(400, 'No items provided for import');
+    }
+
+    const result = await bulkImportProducts(shopId, items);
+
+    // Update scan status
+    await prisma.scan.update({
+      where: { id: scanId },
+      data: { status: 'CONFIRMED' },
+    });
+
+    // Log activity
+    await logActivity({
+      shopId,
+      userId: req.user!.userId,
+      action: 'STOCK_IMPORTED',
+      entityType: 'Scan',
+      entityId: scanId,
+      details: { created: result.created, updated: result.updated, skipped: result.skipped },
+    });
+
+    // Create notification
+    await createNotification({
+      shopId,
+      type: 'STOCK_IMPORTED',
+      title: `Stock imported: ${result.created} new, ${result.updated} updated`,
+      message: `Supplier bill scan processed. ${result.created} new products added and ${result.updated} existing products restocked.`,
+      extraData: result,
+    });
+
+    res.json({ result });
   } catch (err) {
     next(err);
   }

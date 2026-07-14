@@ -8,7 +8,9 @@ import type { Product } from '../types';
 import {
   Package, Search, Plus, Edit2, Trash2, X,
   AlertTriangle, Clock, Filter, ChevronDown, ChevronUp,
+  Camera, TrendingUp,
 } from 'lucide-react';
+import ScanStockModal from '../components/ScanStockModal';
 
 export default function InventoryPage() {
   const { user } = useAuth();
@@ -21,6 +23,7 @@ export default function InventoryPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showScanStock, setShowScanStock] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', search, categoryFilter, sortBy, sortOrder],
@@ -42,6 +45,12 @@ export default function InventoryPage() {
   const { data: expiring } = useQuery({
     queryKey: ['products', 'expiring'],
     queryFn: () => api.get('/products/expiring').then((r) => r.data),
+  });
+
+  const { data: profitStats } = useQuery({
+    queryKey: ['products', 'profit-stats'],
+    queryFn: () => api.get('/products/profit-stats').then((r) => r.data),
+    enabled: isOwner,
   });
 
   const deleteMutation = useMutation({
@@ -83,6 +92,14 @@ export default function InventoryPage() {
     return new Date(p.expiryDate) < new Date();
   };
 
+  const getMargin = (p: Product) => {
+    if (!p.costPrice) return null;
+    const sell = Number(p.unitPrice);
+    const cost = Number(p.costPrice);
+    if (sell <= 0) return null;
+    return Math.round(((sell - cost) / sell) * 1000) / 10;
+  };
+
   return (
     <div>
       {/* Page header */}
@@ -92,17 +109,25 @@ export default function InventoryPage() {
           <p className="text-sm text-faded-docket">Manage your products, track stock levels, and stay on top of alerts.</p>
         </div>
         {isOwner && (
-          <button
-            onClick={() => { setEditingProduct(null); setShowModal(true); }}
-            className="btn-primary shrink-0"
-          >
-            <Plus size={16} /> Add Product
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => setShowScanStock(true)}
+              className="btn-secondary"
+            >
+              <Camera size={16} /> Scan Stock Bill
+            </button>
+            <button
+              onClick={() => { setEditingProduct(null); setShowModal(true); }}
+              className="btn-primary"
+            >
+              <Plus size={16} /> Add Product
+            </button>
+          </div>
         )}
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <div className="card p-4">
           <p className="text-xs text-faded-docket font-medium uppercase tracking-wider">Total SKUs</p>
           <p className="font-display text-2xl text-counter-slate mt-1 tabular-nums">{totalProducts}</p>
@@ -121,6 +146,16 @@ export default function InventoryPage() {
             {(expiring?.expired?.length || 0) + (expiring?.within7Days?.length || 0) + (expiring?.within30Days?.length || 0)}
           </p>
         </div>
+        {isOwner && profitStats?.summary && (
+          <div className="card p-4 border-l-4 border-l-mint-tender">
+            <p className="text-xs text-faded-docket font-medium uppercase tracking-wider flex items-center gap-1">
+              <TrendingUp size={10} /> Avg Margin
+            </p>
+            <p className="font-display text-2xl text-mint-tender mt-1 tabular-nums">
+              {profitStats.summary.avgMarginPercent}%
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Search & filter bar */}
@@ -165,6 +200,11 @@ export default function InventoryPage() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-counter-slate uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('unitPrice')}>
                   <span className="flex items-center gap-1 justify-end">Price <SortIcon field="unitPrice" /></span>
                 </th>
+                {isOwner && (
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-counter-slate uppercase tracking-wider">
+                    Margin
+                  </th>
+                )}
                 <th className="text-right px-4 py-3 text-xs font-semibold text-counter-slate uppercase tracking-wider cursor-pointer select-none" onClick={() => toggleSort('quantityInStock')}>
                   <span className="flex items-center gap-1 justify-end">Stock <SortIcon field="quantityInStock" /></span>
                 </th>
@@ -176,85 +216,109 @@ export default function InventoryPage() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-faded-docket">Loading products…</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-faded-docket">Loading products…</td></tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12">
+                  <td colSpan={7} className="text-center py-12">
                     <Package size={40} className="text-faded-docket/30 mx-auto mb-3" />
                     <p className="text-faded-docket font-medium">No products yet</p>
                     <p className="text-sm text-faded-docket/70 mt-1">Add your first product to start tracking inventory.</p>
                     {isOwner && (
-                      <button onClick={() => setShowModal(true)} className="btn-primary mt-4 text-sm">
-                        <Plus size={14} /> Add Product
-                      </button>
+                      <div className="flex gap-2 justify-center mt-4">
+                        <button onClick={() => setShowScanStock(true)} className="btn-secondary text-sm">
+                          <Camera size={14} /> Scan Bill
+                        </button>
+                        <button onClick={() => setShowModal(true)} className="btn-primary text-sm">
+                          <Plus size={14} /> Add Product
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
               ) : (
-                products.map((product: Product, idx: number) => (
-                  <motion.tr
-                    key={product.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.02 }}
-                    className={`border-b border-faded-docket/10 hover:bg-counter-slate-50/30 transition-colors ${isLowStock(product) ? 'bg-amber-alert-50/30' : ''}`}
-                  >
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-sm text-counter-slate">{product.name}</p>
-                        {product.sku && <p className="text-xs text-faded-docket font-mono">{product.sku}</p>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-counter-slate-400 bg-counter-slate-50 px-2 py-0.5 rounded text-xs font-medium">
-                        {product.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums">
-                      ₹{Number(product.unitPrice).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`font-mono text-sm font-medium tabular-nums ${isLowStock(product) ? 'text-amber-alert' : 'text-counter-slate'}`}>
-                        {product.quantityInStock}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {isExpired(product) && <span className="badge-danger text-[10px]">EXPIRED</span>}
-                        {!isExpired(product) && isExpiringSoon(product) && (
-                          <span className="badge-warning text-[10px] flex items-center gap-0.5">
-                            <Clock size={9} />
-                            {Math.ceil((new Date(product.expiryDate!).getTime() - Date.now()) / (1000*60*60*24))}d
-                          </span>
-                        )}
-                        {isLowStock(product) && <span className="badge-warning text-[10px] flex items-center gap-0.5"><AlertTriangle size={9} />Low</span>}
-                        {!isLowStock(product) && !isExpired(product) && !isExpiringSoon(product) && <span className="badge-success text-[10px]">In Stock</span>}
-                      </div>
-                    </td>
-                    {isOwner && (
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => { setEditingProduct(product); setShowModal(true); }}
-                            className="p-1.5 rounded-lg hover:bg-counter-slate-50 text-faded-docket hover:text-counter-slate transition-colors"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete "${product.name}"?`)) {
-                                deleteMutation.mutate(product.id);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg hover:bg-stamp-vermillion-50 text-faded-docket hover:text-stamp-vermillion transition-colors"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                products.map((product: Product, idx: number) => {
+                  const margin = getMargin(product);
+                  return (
+                    <motion.tr
+                      key={product.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.02 }}
+                      className={`border-b border-faded-docket/10 hover:bg-counter-slate-50/30 transition-colors ${isLowStock(product) ? 'bg-amber-alert-50/30' : ''}`}
+                    >
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-sm text-counter-slate">{product.name}</p>
+                          {product.sku && <p className="text-xs text-faded-docket font-mono">{product.sku}</p>}
                         </div>
                       </td>
-                    )}
-                  </motion.tr>
-                ))
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-counter-slate-400 bg-counter-slate-50 px-2 py-0.5 rounded text-xs font-medium">
+                          {product.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <p className="font-mono text-sm tabular-nums">₹{Number(product.unitPrice).toFixed(2)}</p>
+                        {product.costPrice && (
+                          <p className="font-mono text-[10px] text-faded-docket tabular-nums">Cost: ₹{Number(product.costPrice).toFixed(2)}</p>
+                        )}
+                      </td>
+                      {isOwner && (
+                        <td className="px-4 py-3 text-right">
+                          {margin !== null ? (
+                            <span className={`font-mono text-xs font-medium tabular-nums ${
+                              margin >= 30 ? 'text-mint-tender' : margin >= 15 ? 'text-amber-alert' : 'text-stamp-vermillion'
+                            }`}>
+                              {margin}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-faded-docket/40">—</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-mono text-sm font-medium tabular-nums ${isLowStock(product) ? 'text-amber-alert' : 'text-counter-slate'}`}>
+                          {product.quantityInStock}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {isExpired(product) && <span className="badge-danger text-[10px]">EXPIRED</span>}
+                          {!isExpired(product) && isExpiringSoon(product) && (
+                            <span className="badge-warning text-[10px] flex items-center gap-0.5">
+                              <Clock size={9} />
+                              {Math.ceil((new Date(product.expiryDate!).getTime() - Date.now()) / (1000*60*60*24))}d
+                            </span>
+                          )}
+                          {isLowStock(product) && <span className="badge-warning text-[10px] flex items-center gap-0.5"><AlertTriangle size={9} />Low</span>}
+                          {!isLowStock(product) && !isExpired(product) && !isExpiringSoon(product) && <span className="badge-success text-[10px]">In Stock</span>}
+                        </div>
+                      </td>
+                      {isOwner && (
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => { setEditingProduct(product); setShowModal(true); }}
+                              className="p-1.5 rounded-lg hover:bg-counter-slate-50 text-faded-docket hover:text-counter-slate transition-colors"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete "${product.name}"?`)) {
+                                  deleteMutation.mutate(product.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-stamp-vermillion-50 text-faded-docket hover:text-stamp-vermillion transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </motion.tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -270,6 +334,13 @@ export default function InventoryPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Scan Stock Modal */}
+      <AnimatePresence>
+        {showScanStock && (
+          <ScanStockModal onClose={() => setShowScanStock(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -282,6 +353,7 @@ function ProductModal({ product, onClose }: { product: Product | null; onClose: 
     name: product?.name || '',
     category: product?.category || 'General',
     unitPrice: product ? String(Number(product.unitPrice)) : '',
+    costPrice: product?.costPrice ? String(Number(product.costPrice)) : '',
     quantityInStock: product ? String(product.quantityInStock) : '0',
     reorderThreshold: product ? String(product.reorderThreshold) : '10',
     sku: product?.sku || '',
@@ -300,6 +372,7 @@ function ProductModal({ product, onClose }: { product: Product | null; onClose: 
       name: form.name,
       category: form.category,
       unitPrice: parseFloat(form.unitPrice),
+      costPrice: form.costPrice ? parseFloat(form.costPrice) : null,
       quantityInStock: parseInt(form.quantityInStock, 10),
       reorderThreshold: parseInt(form.reorderThreshold, 10),
       sku: form.sku || undefined,
@@ -322,6 +395,11 @@ function ProductModal({ product, onClose }: { product: Product | null; onClose: 
       setLoading(false);
     }
   };
+
+  // Calculate margin preview
+  const sellPrice = parseFloat(form.unitPrice) || 0;
+  const costPrice = parseFloat(form.costPrice) || 0;
+  const margin = sellPrice > 0 && costPrice > 0 ? Math.round(((sellPrice - costPrice) / sellPrice) * 1000) / 10 : null;
 
   return (
     <motion.div
@@ -363,11 +441,29 @@ function ProductModal({ product, onClose }: { product: Product | null; onClose: 
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-counter-slate mb-1">Price (₹) *</label>
+              <label className="block text-sm font-medium text-counter-slate mb-1">Selling Price (₹) *</label>
               <input type="number" step="0.01" min="0" value={form.unitPrice} onChange={updateField('unitPrice')} className="input-field font-mono" placeholder="0.00" required />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-counter-slate mb-1">
+                Cost Price (₹) <span className="text-faded-docket font-normal text-xs">(optional)</span>
+              </label>
+              <input type="number" step="0.01" min="0" value={form.costPrice} onChange={updateField('costPrice')} className="input-field font-mono" placeholder="0.00" />
+            </div>
+          </div>
+
+          {/* Margin preview */}
+          {margin !== null && (
+            <div className={`text-xs font-medium px-3 py-1.5 rounded-lg ${
+              margin >= 30 ? 'bg-mint-tender/10 text-mint-tender' : margin >= 15 ? 'bg-amber-alert/10 text-amber-alert' : 'bg-stamp-vermillion/10 text-stamp-vermillion'
+            }`}>
+              Profit margin: {margin}% · Profit per unit: ₹{(sellPrice - costPrice).toFixed(2)}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-counter-slate mb-1">In Stock *</label>
               <input type="number" min="0" value={form.quantityInStock} onChange={updateField('quantityInStock')} className="input-field font-mono" required />

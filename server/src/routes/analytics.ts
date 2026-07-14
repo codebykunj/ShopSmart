@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { authenticate, requireShopAccess, requireRole } from '../middleware/auth';
+import { getReorderSuggestions } from '../services/reorderService';
 
 const router = Router();
 router.use(authenticate, requireShopAccess);
@@ -142,6 +143,17 @@ router.get('/top-products', async (req: Request, res: Response, next: NextFuncti
     }));
 
     res.json({ products, range });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/analytics/reorder-suggestions
+router.get('/reorder-suggestions', requireRole('OWNER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const shopId = req.user!.shopId!;
+    const data = await getReorderSuggestions(shopId);
+    res.json(data);
   } catch (err) {
     next(err);
   }
