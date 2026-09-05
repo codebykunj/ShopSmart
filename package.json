@@ -13,7 +13,7 @@
     "db:studio": "cd server && npx prisma studio",
     "test": "cd server && npm test",
     "test:e2e": "cd client && npx playwright test",
-    "docker:up": "docker compose up -d",
+    "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f"
   },

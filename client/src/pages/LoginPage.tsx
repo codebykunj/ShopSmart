@@ -151,7 +151,7 @@ export default function LoginPage() {
           {/* Demo credentials hint */}
           <div className="mt-8 p-3 bg-counter-slate-50 rounded-lg border border-faded-docket/20">
             <p className="text-xs text-faded-docket font-mono text-center">
-              Demo: rajesh@shopsmart.demo / password123
+              Demo: kunj@shopsmart.demo / password123
             </p>
           </div>
         </motion.div>

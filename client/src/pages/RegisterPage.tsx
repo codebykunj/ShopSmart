@@ -83,7 +83,7 @@ export default function RegisterPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="reg-name" className="block text-sm font-medium text-counter-slate mb-1">Your name</label>
-                <input id="reg-name" type="text" value={form.name} onChange={updateField('name')} className="input-field" placeholder="Rajesh Sharma" required />
+                <input id="reg-name" type="text" value={form.name} onChange={updateField('name')} className="input-field" placeholder="Kunj Trivedi" required />
               </div>
               <div>
                 <label htmlFor="reg-email" className="block text-sm font-medium text-counter-slate mb-1">Email</label>
@@ -107,7 +107,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="reg-shop" className="block text-sm font-medium text-counter-slate mb-1">Shop name</label>
-              <input id="reg-shop" type="text" value={form.shopName} onChange={updateField('shopName')} className="input-field" placeholder="Sharma General Store" required />
+              <input id="reg-shop" type="text" value={form.shopName} onChange={updateField('shopName')} className="input-field" placeholder="TRIVEDI GENRAL STORE" required />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

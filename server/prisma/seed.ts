@@ -11,6 +11,9 @@ async function main() {
   await prisma.scan.deleteMany();
   await prisma.bill.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.activityLog.deleteMany();
   await prisma.user.updateMany({ data: { shopId: null } });
   await prisma.shop.deleteMany();
   await prisma.user.deleteMany();
@@ -20,8 +23,8 @@ async function main() {
 
   const owner = await prisma.user.create({
     data: {
-      name: 'Rajesh Sharma',
-      email: 'rajesh@shopsmart.demo',
+      name: 'Kunj Trivedi',
+      email: 'kunj@shopsmart.demo',
       passwordHash,
       role: 'OWNER',
     },
@@ -30,7 +33,7 @@ async function main() {
   // Create shop
   const shop = await prisma.shop.create({
     data: {
-      name: 'Sharma General Store',
+      name: 'TRIVEDI GENRAL STORE',
       address: '42, MG Road, Sector 14, Gurgaon 122001',
       phone: '+91 98765 43210',
       ownerId: owner.id,
@@ -54,7 +57,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Users created: owner (rajesh@shopsmart.demo) + staff (priya@shopsmart.demo)');
+  console.log('✅ Users created: owner (kunj@shopsmart.demo) + staff (priya@shopsmart.demo)');
   console.log('   Password for both: password123\n');
 
   // Create products across categories
@@ -228,7 +231,7 @@ async function main() {
 
   console.log(`✅ ${billsData.length} sample bills created\n`);
   console.log('🎉 Seed complete! You can now log in with:');
-  console.log('   Owner: rajesh@shopsmart.demo / password123');
+  console.log('   Owner: kunj@shopsmart.demo / password123');
   console.log('   Staff: priya@shopsmart.demo / password123');
 }
 
