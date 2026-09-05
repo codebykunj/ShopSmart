@@ -8,7 +8,7 @@ function parseOcrText(rawText: string) {
   const lineItems: Array<{ productName: string; quantity: number; unitPrice: number; confidence: number }> = [];
 
   const datePattern = /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/;
-  const billNumPattern = /(?:bill|invoice|receipt|inv|no|#)\s*[:\.\-]?\s*([A-Z0-9\-]+)/i;
+  const billNumPattern = /(?:invoice|bill|receipt|inv|ref|#)\s*(?:no|num(?:ber)?)?\s*[:\.\-]?\s*([A-Z0-9\-]+)/i;
   const lineItemPattern = /^(.+?)\s+(\d+)\s+(?:x\s+)?(?:₹|rs\.?|\$)?\s*(\d+\.?\d{0,2})(?:\s+(?:₹|rs\.?|\$)?\s*(\d+\.?\d{0,2}))?$/i;
 
   let confidenceSum = 0;

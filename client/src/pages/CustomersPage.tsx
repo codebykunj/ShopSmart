@@ -18,11 +18,13 @@ export default function CustomersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['customers', search],
     queryFn: () => api.get('/customers', { params: { search: search || undefined, limit: 50 } }).then((r) => r.data),
+    refetchInterval: 3000,
   });
 
   const { data: insights } = useQuery({
     queryKey: ['customers', 'insights'],
     queryFn: () => api.get('/customers/insights').then((r) => r.data),
+    refetchInterval: 3000,
   });
 
   const customers = data?.customers || [];

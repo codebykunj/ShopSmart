@@ -34,3 +34,9 @@ npm-debug.log*
 coverage/
 test-results/
 playwright-report/
+
+# WhatsApp Web Cache
+.wwebjs_*
+*.wwebjs_*
+server/.wwebjs_*
+

@@ -218,19 +218,6 @@ export default function BillingPage() {
     }
   };
 
-  const handleWhatsAppShare = async () => {
-    if (!customerMobile || customerMobile.length < 10) {
-      toast.error('Please enter a valid 10-digit mobile number before finalizing to use WhatsApp');
-      return;
-    }
-    const toastId = toast.loading(`Sending bill to ${customerMobile} via WhatsApp...`);
-    try {
-      const res = await api.post(`/bills/${finalizedBillId}/whatsapp`);
-      toast.success(res.data.message, { id: toastId });
-    } catch {
-      toast.error('Failed to send WhatsApp message', { id: toastId });
-    }
-  };
 
   // Handle OCR scan upload
   const handleScanUpload = async (file: File) => {
@@ -478,9 +465,6 @@ export default function BillingPage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-4 flex flex-wrap sm:flex-nowrap gap-3">
               <button onClick={handleDownloadPdf} className="btn-primary flex-1">
                 <Download size={16} /> Download
-              </button>
-              <button onClick={handleWhatsAppShare} className="btn-primary flex-1 bg-green-600 hover:bg-green-700 border-green-600">
-                <Smartphone size={16} /> WhatsApp
               </button>
               <button onClick={handleNewBill} className="btn-secondary flex-1">
                 <ReceiptText size={16} /> New Bill

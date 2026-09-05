@@ -10,6 +10,7 @@ import SalesPage from './pages/SalesPage';
 import BillsPage from './pages/BillsPage';
 import CustomersPage from './pages/CustomersPage';
 import ActivityLogPage from './pages/ActivityLogPage';
+import SettingsPage from './pages/SettingsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/activity" element={<ActivityLogPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

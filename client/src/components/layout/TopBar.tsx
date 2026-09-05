@@ -16,6 +16,7 @@ import {
   Store,
   Users,
   Activity,
+  Settings,
 } from 'lucide-react';
 
 const navItems = [
@@ -29,6 +30,7 @@ const navItems = [
 
 const ownerOnlyItems = [
   { path: '/activity', label: 'Activity', icon: Activity },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function TopBar() {

@@ -60,6 +60,7 @@ export default function ActivityLogPage() {
     queryFn: () => api.get('/activity', {
       params: { page, limit: 30, action: actionFilter || undefined },
     }).then((r) => r.data),
+    refetchInterval: 3000,
   });
 
   const { data: staffData } = useQuery({

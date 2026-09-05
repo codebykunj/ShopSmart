@@ -150,32 +150,4 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/bills/:id/whatsapp
-router.post('/:id/whatsapp', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const shopId = req.user!.shopId!;
-    const bill = await prisma.bill.findFirst({
-      where: { id: req.params.id as string, shopId },
-    });
-
-    if (!bill) {
-      throw new AppError(404, 'Bill not found');
-    }
-
-    if (!bill.customerMobile) {
-      throw new AppError(400, 'Customer mobile number not found for this bill');
-    }
-
-    // Simulate sending PDF to WhatsApp
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    res.json({ 
-      success: true, 
-      message: `Invoice PDF successfully sent to ${bill.customerMobile} via WhatsApp!` 
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
 export default router;
